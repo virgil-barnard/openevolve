@@ -11,6 +11,15 @@ We run N episodes with different seeds and return average score & length.
 import importlib.util
 import statistics
 from pathlib import Path
+import sys
+import os
+
+# Ensure local modules like `game` and `player_base` can be imported when this
+# file is loaded dynamically via ``importlib``. OpenEvolve loads the evaluation
+# function using ``spec_from_file_location`` which does not automatically add
+# the file's directory to ``sys.path``.
+sys.path.insert(0, os.path.dirname(__file__))
+
 from game import Game
 from player_base import PlayerBase
 
