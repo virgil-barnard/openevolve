@@ -1,15 +1,14 @@
 version: "3.9"
 
 services:
-  # ------------------------------------------------------------------- #
-  # 1) Ollama with NVIDIA GPUs
-  # ------------------------------------------------------------------- #
+  # -------------------------------------------
+  # 1) Ollama LLM server (GPU support optional)
+  # -------------------------------------------
   ollama:
     image: ollama/ollama:latest
     container_name: ollama
     restart: unless-stopped
     networks: [ollama-net]
-    # ---------- GPU access ----------
     deploy:
       resources:
         reservations:
@@ -17,52 +16,63 @@ services:
             - driver: nvidia
               count: all
               capabilities: [gpu]
-    command: ['serve']
+    command: ["serve"]
     volumes:
-      - "C:/ollama/models:/root/.ollama"
-    ports: ["11434:11434"]
+      - ./ollama/models:/root/.ollama
+    ports:
+      - "11434:11434"
 
-# ------------------------------------------------------------------- #
-# 2) Open-WebUI – chat interface to the same Ollama: https://github.com/mythrantic/ollama-docker/blob/main/docker-compose-ollama-gpu.yaml
-#                 Test gpu: docker run --gpus all nvidia/cuda:11.5.2-base-ubuntu20.04 nvidia-smi
-# ------------------------------------------------------------------- #
+  # -------------------------------------------------
+  # 2) LiteLLM proxy exposing OpenAI-compatible API
+  # -------------------------------------------------
+  litellm:
+    image: ghcr.io/berriai/litellm:main
+    container_name: litellm
+    depends_on: [ollama]
+    networks: [ollama-net]
+    command: ["--model", "ollama/llama2", "--api_base", "http://ollama:11434", "--port", "4000"]
+    ports:
+      - "4000:4000"
+
+  # -------------------------------------------------
+  # 3) Open-WebUI chat interface (optional)
+  # -------------------------------------------------
   ollama-webui:
     image: ghcr.io/open-webui/open-webui:main
     container_name: ollama-webui
     restart: unless-stopped
     depends_on: [ollama]
     networks: [ollama-net]
-
-    # Persist WebUI settings / history
     volumes:
-      - "C:/ollama/webui:/app/backend/data"
-
+      - ./ollama/webui:/app/backend/data
     ports:
       - "8080:8080"          # browse http://localhost:8080
-
     environment:
-      - OLLAMA_BASE_URLS=http://ollama:11434        # <— service name
+      - OLLAMA_BASE_URLS=http://ollama:11434
       - WEBUI_AUTH=False
       - WEBUI_NAME=Ollama
       - WEBUI_URL=http://localhost:8080
-      # if you want auth: set WEBUI_AUTH=True and WEBUI_SECRET_KEY
 
-  # ------------------------------------------------------------------- #
-  # 3) AlphaEvolve engine
-  # ------------------------------------------------------------------- #
+  # -------------------------------------------------
+  # 4) OpenEvolve running the Snake example
+  # -------------------------------------------------
   alphaevolve:
     build:
-      context: .          # repo root (where the Dockerfile lives)
+      context: .
       dockerfile: Dockerfile
     container_name: alphaevolve
+    depends_on: [litellm]
     networks: [ollama-net]
-    depends_on: [ollama]
     environment:
-      - OLLAMA_BASE_URL=http://ollama:11434
-      - LLM_MODEL=llama2
-    # mount the *correct* host cache dir
+      - OPENAI_API_BASE=http://litellm:4000
+      - OPENAI_API_KEY=dummy-key
     volumes:
       - ./alphaevolve/.tmp_runs:/workspace/.tmp_runs
+    command:
+      - examples/snake/npc_player.py
+      - examples/snake/evaluator.py
+      - -c
+      - examples/snake/snake_config.yaml
     tty: true
 
 networks:
