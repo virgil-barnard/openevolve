@@ -8,6 +8,11 @@ class EvolvedPlayer(PlayerBase):
     """
 
     # EVOLVE-BLOCK-START
+
+    def __init__(self):
+        # Could create stateful variables to improve decide method here. 
+        pass
+
     def decide(self, sensors):
         """
         sensors: {
