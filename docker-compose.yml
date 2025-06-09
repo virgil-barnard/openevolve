@@ -1,0 +1,69 @@
+version: "3.9"
+
+services:
+  # ------------------------------------------------------------------- #
+  # 1) Ollama with NVIDIA GPUs
+  # ------------------------------------------------------------------- #
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: unless-stopped
+    networks: [ollama-net]
+    # ---------- GPU access ----------
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    command: ['serve']
+    volumes:
+      - "C:/ollama/models:/root/.ollama"
+    ports: ["11434:11434"]
+
+# ------------------------------------------------------------------- #
+# 2) Open-WebUI – chat interface to the same Ollama: https://github.com/mythrantic/ollama-docker/blob/main/docker-compose-ollama-gpu.yaml
+#                 Test gpu: docker run --gpus all nvidia/cuda:11.5.2-base-ubuntu20.04 nvidia-smi
+# ------------------------------------------------------------------- #
+  ollama-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: ollama-webui
+    restart: unless-stopped
+    depends_on: [ollama]
+    networks: [ollama-net]
+
+    # Persist WebUI settings / history
+    volumes:
+      - "C:/ollama/webui:/app/backend/data"
+
+    ports:
+      - "8080:8080"          # browse http://localhost:8080
+
+    environment:
+      - OLLAMA_BASE_URLS=http://ollama:11434        # <— service name
+      - WEBUI_AUTH=False
+      - WEBUI_NAME=Ollama
+      - WEBUI_URL=http://localhost:8080
+      # if you want auth: set WEBUI_AUTH=True and WEBUI_SECRET_KEY
+
+  # ------------------------------------------------------------------- #
+  # 3) AlphaEvolve engine
+  # ------------------------------------------------------------------- #
+  alphaevolve:
+    build:
+      context: .          # repo root (where the Dockerfile lives)
+      dockerfile: Dockerfile
+    container_name: alphaevolve
+    networks: [ollama-net]
+    depends_on: [ollama]
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - LLM_MODEL=llama2
+    # mount the *correct* host cache dir
+    volumes:
+      - ./alphaevolve/.tmp_runs:/workspace/.tmp_runs
+    tty: true
+
+networks:
+  ollama-net: {}
